@@ -6,10 +6,9 @@
 <title>My IPTV Player</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',sans-serif; }
-  body { background:#0f0f14; color:#fff; min-height:100vh; padding:15px; }
+  body { background:#0f0f14; color:#fff; min-height:100vh; padding:15px; padding-bottom:40px; }
   h1 { text-align:center; margin-bottom:15px; color:#4ade80; font-size:22px; }
 
-  /* Playlist info */
   .pl-info {
     background:#1a1a22; padding:10px 12px; border-radius:10px;
     margin-bottom:12px; border:1px solid #2a2a33;
@@ -33,44 +32,103 @@
   .player-card {
     background:#1a1a22; border-radius:14px; padding:15px;
     margin-bottom:15px; display:none;
+    border:1px solid #2a2a33;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
   }
-  .player-card.active { display:block; }
-  .channel-info { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
-  .channel-logo {
-    width:55px; height:55px; border-radius:10px; object-fit:cover;
-    background:#333; border:2px solid #4ade80;
+  .player-card.active { display:block; animation:fadeIn 0.3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:translateY(0);} }
+
+  video { width:100%; border-radius:10px; background:#000; max-height:420px; }
+
+  /* Info Box */
+  .info-box {
+    background:#0f0f14;
+    border:1px solid #2a2a33;
+    border-radius:12px;
+    padding:14px;
+    margin-top:14px;
   }
-  .channel-name { font-size:17px; font-weight:bold; }
-  .channel-cat { font-size:12px; color:#888; margin-top:3px; }
-  video { width:100%; border-radius:10px; background:#000; max-height:400px; }
-  .link-row { display:flex; gap:8px; margin-top:10px; align-items:center; }
-  .link-row input {
-    flex:1; padding:10px; border-radius:8px; border:1px solid #333;
-    background:#0f0f14; color:#aaa; font-size:12px;
+  .info-box h4 {
+    font-size:13px; color:#4ade80; margin-bottom:10px;
+    text-transform:uppercase; letter-spacing:1px;
+    display:flex; align-items:center; gap:6px;
   }
+  .info-row {
+    display:flex; align-items:center; gap:10px;
+    padding:8px 0;
+    border-bottom:1px solid #1a1a22;
+  }
+  .info-row:last-child { border-bottom:none; }
+  .info-label {
+    width:90px; font-size:11px; color:#888;
+    text-transform:uppercase; letter-spacing:0.5px;
+    flex-shrink:0;
+  }
+  .info-value {
+    flex:1; font-size:13px; color:#e5e5e5;
+    word-break:break-all;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .info-value.link-text {
+    color:#4ade80;
+    cursor:pointer;
+    text-decoration:underline dotted;
+    transition:0.2s;
+  }
+  .info-value.link-text:hover { color:#6ee7a3; }
+  .info-value.link-text:active { transform:scale(0.98); }
+
+  .info-logo {
+    width:42px; height:42px; border-radius:8px;
+    object-fit:cover; background:#333;
+    border:1px solid #2a2a33;
+  }
+
+  /* Copy button */
   .copy-btn {
-    padding:10px 14px; border-radius:8px; border:none;
-    background:#4ade80; color:#000; font-weight:bold; cursor:pointer;
+    padding:8px 14px; border-radius:8px; border:none;
+    background:#4ade80; color:#000; font-weight:bold;
+    cursor:pointer; font-size:12px;
     white-space:nowrap;
+    transition:0.2s;
   }
-  .copy-btn:active { transform:scale(0.96); }
+  .copy-btn:hover { background:#6ee7a3; }
+  .copy-btn:active { transform:scale(0.94); }
+  .copy-btn.copied { background:#22c55e; color:#fff; }
 
   /* Grid */
-  .playlist-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .playlist-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+    gap:10px;
+  }
   .playlist-item {
     background:#1a1a22; border-radius:10px; padding:10px;
     cursor:pointer; text-align:center; transition:0.2s;
     border:1px solid transparent;
+    position:relative;
   }
   .playlist-item:hover { border-color:#4ade80; transform:translateY(-2px); }
   .playlist-item img { width:100%; height:80px; object-fit:cover; border-radius:8px; background:#333; }
-  .playlist-item p { font-size:13px; margin-top:6px; font-weight:bold; }
+  .playlist-item p { font-size:13px; margin-top:6px; font-weight:bold;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .playlist-item span { font-size:11px; color:#888; }
   .playlist-item .pl-source {
     display:inline-block; margin-top:4px; padding:2px 6px;
     background:#0f0f14; border-radius:4px; font-size:9px; color:#4ade80;
   }
   .no-result { text-align:center; color:#888; padding:20px; }
+
+  /* Toast */
+  .toast {
+    position:fixed; bottom:25px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#22c55e; color:#fff; padding:12px 22px;
+    border-radius:30px; font-weight:bold; font-size:14px;
+    box-shadow:0 8px 24px rgba(34,197,94,0.4);
+    transition:0.3s; z-index:999; opacity:0; pointer-events:none;
+  }
+  .toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
 </style>
 </head>
 <body>
@@ -80,39 +138,56 @@
 <div class="pl-info" id="plInfo">⏳ Loading playlists.txt...</div>
 
 <div class="search-box">
-  <input type="text" id="search" placeholder="Search channel or category...">
+  <input type="text" id="search" placeholder="🔍 Search channel or category...">
 </div>
 
 <div class="status" id="status">Please wait...</div>
 
+<!-- Player -->
 <div class="player-card" id="playerCard">
-  <div class="channel-info">
-    <img class="channel-logo" id="chLogo" src="" alt="logo">
-    <div>
-      <div class="channel-name" id="chName">-</div>
-      <div class="channel-cat" id="chCat">-</div>
-    </div>
-  </div>
   <video id="video" controls autoplay playsinline></video>
-  <div class="link-row">
-    <input type="text" id="streamLink" readonly value="">
-    <button class="copy-btn" onclick="copyLink(event)">📋 Copy</button>
+
+  <!-- Info Box -->
+  <div class="info-box">
+    <h4>📺 Channel Info</h4>
+
+    <div class="info-row">
+      <span class="info-label">Name</span>
+      <span class="info-value" id="iName">-</span>
+    </div>
+
+    <div class="info-row">
+      <span class="info-label">Category</span>
+      <span class="info-value" id="iCat">-</span>
+    </div>
+
+    <div class="info-row">
+      <span class="info-label">Logo</span>
+      <img class="info-logo" id="iLogoImg" src="" alt="">
+      <span class="info-value link-text" id="iLogo" onclick="copyText(this.textContent, this)">-</span>
+    </div>
+
+    <div class="info-row">
+      <span class="info-label">Stream</span>
+      <span class="info-value link-text" id="iStream" onclick="copyText(this.textContent, this)">-</span>
+      <button class="copy-btn" onclick="copyText(document.getElementById('iStream').textContent, this)">📋 Copy</button>
+    </div>
   </div>
 </div>
 
 <div class="playlist-grid" id="grid"></div>
 <div class="no-result" id="noResult" style="display:none;">❌ No result found</div>
 
+<div class="toast" id="toast">✅ Copied!</div>
+
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script>
-// ============================================================
-//  📂 Links file (same repo তে)
 // ============================================================
 const LINKS_FILE = 'playlists.txt';
 // ============================================================
 
-let playlists = [];   // [{url, name, channels:[]}]
-let playlist = [];    // merged channels
+let playlists = [];
+let playlist = [];
 let hls = null;
 
 // ---------- Init ----------
@@ -138,7 +213,7 @@ fetch(LINKS_FILE + '?v=' + Date.now())
     setStatus('Failed to load playlists.txt', 'err');
   });
 
-// ---------- Load each playlist ----------
+// ---------- Load playlist ----------
 function loadPlaylist(url) {
   const rawUrl = toRaw(url);
   const name = decodeURIComponent(rawUrl.split('/').pop() || 'playlist');
@@ -166,7 +241,6 @@ function loadPlaylist(url) {
     });
 }
 
-// blob → raw
 function toRaw(url) {
   if (url.includes('github.com') && url.includes('/blob/')) {
     return url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
@@ -225,7 +299,7 @@ function renderGrid(items) {
       <div class="playlist-item" onclick="playItem(${idx})">
         <img src="${item.logo || 'https://via.placeholder.com/150x80/1a1a22/4ade80?text=TV'}"
              onerror="this.src='https://via.placeholder.com/150x80/1a1a22/4ade80?text=TV'">
-        <p>${item.name}</p>
+        <p title="${item.name}">${item.name}</p>
         <span>${item.category}</span>
         ${item.source ? `<div class="pl-source">📂 ${item.source}</div>` : ''}
       </div>
@@ -252,11 +326,17 @@ function playItem(index) {
 
   const card = document.getElementById('playerCard');
   card.classList.add('active');
-  document.getElementById('chName').textContent = item.name;
-  document.getElementById('chCat').textContent = item.category + (item.source ? ' • ' + item.source : '');
-  document.getElementById('chLogo').src = item.logo || 'https://via.placeholder.com/60/1a1a22/4ade80?text=TV';
-  document.getElementById('streamLink').value = item.url;
 
+  // Info box
+  document.getElementById('iName').textContent = item.name;
+  document.getElementById('iCat').textContent = item.category + (item.source ? ' • ' + item.source : '');
+
+  const logoUrl = item.logo || 'https://via.placeholder.com/60/1a1a22/4ade80?text=TV';
+  document.getElementById('iLogoImg').src = logoUrl;
+  document.getElementById('iLogo').textContent = item.logo || '(no logo)';
+  document.getElementById('iStream').textContent = item.url;
+
+  // Video
   const video = document.getElementById('video');
   if (hls) { hls.destroy(); hls = null; }
 
@@ -274,16 +354,43 @@ function playItem(index) {
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ---------- Copy ----------
-function copyLink(e) {
-  const input = document.getElementById('streamLink');
-  input.select();
-  input.setSelectionRange(0, 99999);
-  navigator.clipboard.writeText(input.value).then(() => {
-    const btn = e.target;
-    btn.textContent = '✅ Copied';
-    setTimeout(() => btn.textContent = '📋 Copy', 1500);
-  }).catch(() => alert('Copy failed'));
+// ---------- Copy (text + button both) ----------
+function copyText(text, el) {
+  if (!text || text === '-' || text === '(no logo)') {
+    showToast('❌ Nothing to copy');
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('✅ Copied!');
+    if (el && el.classList.contains('copy-btn')) {
+      const orig = el.textContent;
+      el.textContent = '✅ Done';
+      el.classList.add('copied');
+      setTimeout(() => {
+        el.textContent = orig;
+        el.classList.remove('copied');
+      }, 1500);
+    }
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('✅ Copied!');
+  });
+}
+
+// ---------- Toast ----------
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 
 // ---------- Status ----------
