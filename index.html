@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My IPTV Player</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',sans-serif; }
+  body { background:#0f0f14; color:#fff; min-height:100vh; padding:15px; }
+  h1 { text-align:center; margin-bottom:15px; color:#4ade80; font-size:22px; }
+
+  /* Playlist info */
+  .pl-info {
+    background:#1a1a22; padding:10px 12px; border-radius:10px;
+    margin-bottom:12px; border:1px solid #2a2a33;
+    font-size:12px; color:#888; text-align:center;
+  }
+  .pl-info b { color:#4ade80; }
+
+  /* Search */
+  .search-box { display:flex; gap:8px; margin-bottom:10px; }
+  .search-box input {
+    flex:1; padding:12px; border-radius:10px; border:1px solid #333;
+    background:#1a1a22; color:#fff; font-size:15px; outline:none;
+  }
+  .search-box input:focus { border-color:#4ade80; }
+
+  .status { text-align:center; color:#888; font-size:13px; margin-bottom:12px; }
+  .status.ok { color:#4ade80; }
+  .status.err { color:#f87171; }
+
+  /* Player */
+  .player-card {
+    background:#1a1a22; border-radius:14px; padding:15px;
+    margin-bottom:15px; display:none;
+  }
+  .player-card.active { display:block; }
+  .channel-info { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .channel-logo {
+    width:55px; height:55px; border-radius:10px; object-fit:cover;
+    background:#333; border:2px solid #4ade80;
+  }
+  .channel-name { font-size:17px; font-weight:bold; }
+  .channel-cat { font-size:12px; color:#888; margin-top:3px; }
+  video { width:100%; border-radius:10px; background:#000; max-height:400px; }
+  .link-row { display:flex; gap:8px; margin-top:10px; align-items:center; }
+  .link-row input {
+    flex:1; padding:10px; border-radius:8px; border:1px solid #333;
+    background:#0f0f14; color:#aaa; font-size:12px;
+  }
+  .copy-btn {
+    padding:10px 14px; border-radius:8px; border:none;
+    background:#4ade80; color:#000; font-weight:bold; cursor:pointer;
+    white-space:nowrap;
+  }
+  .copy-btn:active { transform:scale(0.96); }
+
+  /* Grid */
+  .playlist-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .playlist-item {
+    background:#1a1a22; border-radius:10px; padding:10px;
+    cursor:pointer; text-align:center; transition:0.2s;
+    border:1px solid transparent;
+  }
+  .playlist-item:hover { border-color:#4ade80; transform:translateY(-2px); }
+  .playlist-item img { width:100%; height:80px; object-fit:cover; border-radius:8px; background:#333; }
+  .playlist-item p { font-size:13px; margin-top:6px; font-weight:bold; }
+  .playlist-item span { font-size:11px; color:#888; }
+  .playlist-item .pl-source {
+    display:inline-block; margin-top:4px; padding:2px 6px;
+    background:#0f0f14; border-radius:4px; font-size:9px; color:#4ade80;
+  }
+  .no-result { text-align:center; color:#888; padding:20px; }
+</style>
+</head>
+<body>
+
+<h1>🎬 My IPTV Player</h1>
+
+<div class="pl-info" id="plInfo">⏳ Loading playlists.txt...</div>
+
+<div class="search-box">
+  <input type="text" id="search" placeholder="Search channel or category...">
+</div>
+
+<div class="status" id="status">Please wait...</div>
+
+<div class="player-card" id="playerCard">
+  <div class="channel-info">
+    <img class="channel-logo" id="chLogo" src="" alt="logo">
+    <div>
+      <div class="channel-name" id="chName">-</div>
+      <div class="channel-cat" id="chCat">-</div>
+    </div>
+  </div>
+  <video id="video" controls autoplay playsinline></video>
+  <div class="link-row">
+    <input type="text" id="streamLink" readonly value="">
+    <button class="copy-btn" onclick="copyLink(event)">📋 Copy</button>
+  </div>
+</div>
+
+<div class="playlist-grid" id="grid"></div>
+<div class="no-result" id="noResult" style="display:none;">❌ No result found</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+// ============================================================
+//  📂 Links file (same repo তে)
+// ============================================================
+const LINKS_FILE = 'playlists.txt';
+// ============================================================
+
+let playlists = [];   // [{url, name, channels:[]}]
+let playlist = [];    // merged channels
+let hls = null;
+
+// ---------- Init ----------
+fetch(LINKS_FILE + '?v=' + Date.now())
+  .then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text();
+  })
+  .then(text => {
+    const urls = text.split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#'));
+
+    if (!urls.length) throw new Error('No links in playlists.txt');
+
+    document.getElementById('plInfo').innerHTML =
+      `📂 <b>${urls.length}</b> playlist link(s) found`;
+
+    urls.forEach(url => loadPlaylist(url));
+  })
+  .catch(e => {
+    document.getElementById('plInfo').innerHTML = `❌ ${e.message}`;
+    setStatus('Failed to load playlists.txt', 'err');
+  });
+
+// ---------- Load each playlist ----------
+function loadPlaylist(url) {
+  const rawUrl = toRaw(url);
+  const name = decodeURIComponent(rawUrl.split('/').pop() || 'playlist');
+
+  const entry = { url, name, channels: [], loading: true };
+  playlists.push(entry);
+
+  fetch(rawUrl)
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    })
+    .then(text => {
+      const channels = parseM3U(text);
+      const idx = playlists.findIndex(p => p === entry);
+      playlists[idx] = { url, name, channels, loading: false };
+      rebuildMerged();
+      renderGrid(playlist);
+      setStatus(`✅ ${playlist.length} channels from ${playlists.filter(p=>!p.loading).length} playlist(s)`, 'ok');
+    })
+    .catch(e => {
+      playlists = playlists.filter(p => p !== entry);
+      console.warn('Failed:', url, e.message);
+      setStatus(`⚠️ Some playlist(s) failed — ${playlist.length} channels loaded`, 'err');
+    });
+}
+
+// blob → raw
+function toRaw(url) {
+  if (url.includes('github.com') && url.includes('/blob/')) {
+    return url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+  }
+  return url;
+}
+
+function rebuildMerged() {
+  playlist = [];
+  playlists.forEach(pl => {
+    if (pl.loading) return;
+    pl.channels.forEach(ch => {
+      playlist.push({ ...ch, source: pl.name });
+    });
+  });
+}
+
+// ---------- Parse M3U ----------
+function parseM3U(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  const items = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('#EXTINF')) {
+      const info = lines[i];
+      const name = info.split(',').pop().trim();
+      const logoMatch = info.match(/tvg-logo="([^"]*)"/);
+      const catMatch = info.match(/group-title="([^"]*)"/);
+      const url = lines[i + 1] || '';
+      if (url && !url.startsWith('#')) {
+        items.push({
+          name,
+          logo: logoMatch ? logoMatch[1] : '',
+          category: catMatch ? catMatch[1] : 'General',
+          url
+        });
+        i++;
+      }
+    }
+  }
+  return items;
+}
+
+// ---------- Render grid ----------
+function renderGrid(items) {
+  const grid = document.getElementById('grid');
+  const noResult = document.getElementById('noResult');
+  if (!items.length) {
+    grid.innerHTML = '';
+    noResult.style.display = 'block';
+    return;
+  }
+  noResult.style.display = 'none';
+  grid.innerHTML = items.map(item => {
+    const idx = playlist.indexOf(item);
+    return `
+      <div class="playlist-item" onclick="playItem(${idx})">
+        <img src="${item.logo || 'https://via.placeholder.com/150x80/1a1a22/4ade80?text=TV'}"
+             onerror="this.src='https://via.placeholder.com/150x80/1a1a22/4ade80?text=TV'">
+        <p>${item.name}</p>
+        <span>${item.category}</span>
+        ${item.source ? `<div class="pl-source">📂 ${item.source}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// ---------- Search ----------
+function searchPlaylist() {
+  const q = document.getElementById('search').value.toLowerCase().trim();
+  if (!q) { renderGrid(playlist); return; }
+  const filtered = playlist.filter(i =>
+    i.name.toLowerCase().includes(q) ||
+    i.category.toLowerCase().includes(q)
+  );
+  renderGrid(filtered);
+}
+document.getElementById('search').addEventListener('input', searchPlaylist);
+
+// ---------- Play ----------
+function playItem(index) {
+  const item = playlist[index];
+  if (!item) return;
+
+  const card = document.getElementById('playerCard');
+  card.classList.add('active');
+  document.getElementById('chName').textContent = item.name;
+  document.getElementById('chCat').textContent = item.category + (item.source ? ' • ' + item.source : '');
+  document.getElementById('chLogo').src = item.logo || 'https://via.placeholder.com/60/1a1a22/4ade80?text=TV';
+  document.getElementById('streamLink').value = item.url;
+
+  const video = document.getElementById('video');
+  if (hls) { hls.destroy(); hls = null; }
+
+  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = item.url;
+  } else if (Hls.isSupported()) {
+    hls = new Hls();
+    hls.loadSource(item.url);
+    hls.attachMedia(video);
+  } else {
+    video.src = item.url;
+  }
+
+  video.play().catch(() => {});
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ---------- Copy ----------
+function copyLink(e) {
+  const input = document.getElementById('streamLink');
+  input.select();
+  input.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(input.value).then(() => {
+    const btn = e.target;
+    btn.textContent = '✅ Copied';
+    setTimeout(() => btn.textContent = '📋 Copy', 1500);
+  }).catch(() => alert('Copy failed'));
+}
+
+// ---------- Status ----------
+function setStatus(msg, cls = '') {
+  const s = document.getElementById('status');
+  s.textContent = msg;
+  s.className = 'status ' + cls;
+}
+</script>
+
+</body>
+</html>
