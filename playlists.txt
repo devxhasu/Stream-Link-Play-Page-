@@ -1,4 +1,1 @@
-# এটা comment (skip হবে)
-https://raw.githubusercontent.com/devxhasu/my-iptv-playlist/main/custom.m3u
-https://raw.githubusercontent.com/user/repo/main/another.m3u
-https://github.com/user/repo/blob/main/third.m3u
+https://raw.githubusercontent.com/devxhasu/my-iptv-playlist/refs/heads/main/public.m3u
